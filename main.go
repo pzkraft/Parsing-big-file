@@ -21,7 +21,7 @@ func main() {
 	work := files.SplitFile(CADModel, 5)
 
 	// Make DB
-	vertexCollection, edgeCollection, err := arangodb.MakeDB("Test1", "TestGraph", "TestVertices", "TestEdges")
+	vertexCollection, edgeCollection, err := arangodb.MakeDB("Test", "TestGraph", "TestVertices", "TestEdges")
 	if err != nil {
 		fmt.Printf("fail to make DB: %v \n", err)
 	}
