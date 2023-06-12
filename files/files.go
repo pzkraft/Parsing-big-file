@@ -6,59 +6,60 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	//"sync"
 )
 
-func Openfile(fileToOpen interface{}) (*os.File, error) {
-	switch v := fileToOpen.(type) {
-	case string:
-		if !strings.HasSuffix(strings.ToLower(v), ".step") {
-			return nil, fmt.Errorf("the file isn't a '.step' one")
-		}
-		openedFile, err := os.Open(v)
-		if err != nil {
-			return nil, fmt.Errorf("unable to read file: %w", err)
-		}
-		return openedFile, nil
-	default:
-		return nil, fmt.Errorf("it's not a file")
+// TODO: interface delete
+func Openfile(fileToOpen string) (*os.File, error) {
+	if !strings.HasSuffix(strings.ToLower(fileToOpen), ".step") {
+		return nil, fmt.Errorf("the file isn't a '.step' one")
 	}
+
+	openedFile, err := os.Open(fileToOpen)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read file: %w", err)
+	}
+	return openedFile, nil
+
 }
 
-func SplitFile(fileToBeChunked *os.File, numOfChunks int) chan string {
-
-	//const fileChunk = 40 * (1 << 20) // 40 MB, change this to your requirement
+func SplitFileToChunks(workChan chan string, fileToBeChunked *os.File, numOfChunks int) {
 
 	fileInfo, _ := fileToBeChunked.Stat()
 	var fileSize int64 = fileInfo.Size()
 
 	fileChunk := float64(fileSize) / float64(numOfChunks)
+	//fileChunk := 40 * (1 << 20) // 40 MB, change this to your requirement
 
 	// calculate total number of parts the file will be chunked into
 	totalPartsNum := uint64(math.Ceil(float64(fileSize) / float64(fileChunk)))
-
 	fmt.Printf("Splitting to %d pieces.\n", totalPartsNum)
 
-	addPartBuffer := ""
-	chunk := ""
-	work := make(chan string, numOfChunks)
-	for i := uint64(0); i < totalPartsNum; i++ {
+	//TODO: for in goroutine
+	//var wg sync.WaitGroup
+	//wg.Add(1)
+	go func(workChan chan string) {
+		//defer wg.Done()
+		addPartBuffer := ""
+		chunk := ""
+		for i := uint64(0); i < totalPartsNum; i++ {
 
-		partSize := int(math.Min(fileChunk, float64(fileSize-int64(i*uint64(fileChunk)))))
-		partBuffer := make([]byte, partSize)
+			partSize := int(math.Min(fileChunk, float64(fileSize-int64(i*uint64(fileChunk)))))
+			partBuffer := make([]byte, partSize)
 
-		fileToBeChunked.Read(partBuffer)
+			fileToBeChunked.Read(partBuffer)
 
-		endLine := strings.LastIndex(string(partBuffer), ";")
+			endLine := strings.LastIndex(string(partBuffer), ";")
 
-		chunkName := "chunk_" + strconv.FormatUint(i, 10)
-		chunk = addPartBuffer + string(partBuffer)[:endLine+1]
-		work <- chunk
+			chunkName := "chunk_" + strconv.FormatUint(i, 10)
+			chunk = addPartBuffer + string(partBuffer)[:endLine+1]
+			workChan <- chunk
 
-		fmt.Println("Split to : ", chunkName)
+			fmt.Println("Split to : ", chunkName)
 
-		chunk = ""
-		addPartBuffer = string(partBuffer)[endLine+1 : len(string(partBuffer))]
-	}
-	defer close(work)
-	return work
+			chunk = ""
+			addPartBuffer = string(partBuffer)[endLine+1 : len(string(partBuffer))]
+		}
+		defer close(workChan)
+	}(workChan)
 }

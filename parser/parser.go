@@ -6,7 +6,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/arangodb/go-driver"
 )
@@ -29,7 +28,7 @@ func ProcessVertexEdge(line string, variant string) (Vertex, Edge) {
 	Vertex := Vertex{}
 	Edge := Edge{}
 
-	if variant == "VE" {
+	if variant == "NEXT_ASSEMBLY" {
 		reName := regexp.MustCompile(`\'.*?\:`)
 		reParentID := regexp.MustCompile(`\#.*?\,`)
 		reID := regexp.MustCompile(`\#.*?\,`)
@@ -40,7 +39,7 @@ func ProcessVertexEdge(line string, variant string) (Vertex, Edge) {
 		Vertex.ID = strings.Trim(reID.FindString(line[i:]), "#,")
 		Edge.ID_from = "TestVertices" + "/" + Vertex.ID
 
-	} else if variant == "V" {
+	} else if variant == "PRODUCT_" {
 		reName := regexp.MustCompile(`(\,'|\n')(.*?)\'`)
 		reID := regexp.MustCompile(`\#.*?\=`)
 
@@ -52,52 +51,61 @@ func ProcessVertexEdge(line string, variant string) (Vertex, Edge) {
 }
 
 // Parsing Tree of parts for a model in STEP file
-func ParseSTEP(chunk string, vertexCollection driver.Collection) ([]Edge, error) {
-	flag := 0
+func ParseFile(chunk string, vertexCollection driver.Collection) ([]Edge, []Vertex, error) {
 	var edges []Edge
+	var parts []Vertex
 
 	for _, line := range strings.Split(chunk, ";") {
 
 		// Parsing filelines with links between parts
 		if strings.Contains(line, "NEXT_ASSEMBLY_USAGE_OCCURRENCE") {
 
-			vertex, edge := ProcessVertexEdge(line, "VE")
+			part, edge := ProcessVertexEdge(line, "NEXT_ASSEMBLY")
 
-			_, err := vertexCollection.CreateDocument(context.TODO(), vertex)
+			_, err := vertexCollection.CreateDocument(context.TODO(), part)
 			if driver.IsArangoError(err) {
-				for i := 1; driver.IsArangoErrorWithCode(err, 409) && i < 100; i++ {
-					vertex.ID = vertex.ID + "(" + strconv.Itoa(i) + ")"
-					_, err = vertexCollection.CreateDocument(context.TODO(), vertex)
-					edge.ID_from = "TestVertices" + "/" + vertex.ID
-					vertex.ID = vertex.ID[:len(vertex.ID)-3]
+				for i := 1; driver.IsArangoErrorWithCode(err, 409); i++ {
+					part.ID = part.ID + "(" + strconv.Itoa(i) + ")"
+					_, err = vertexCollection.CreateDocument(context.TODO(), part)
+					edge.ID_from = "TestVertices" + "/" + part.ID
+					part.ID = part.ID[:len(part.ID)-3]
 					if i == 99 {
-						return nil, fmt.Errorf("counter of identical ID  reached the limit, %w", err)
+						return nil, nil, fmt.Errorf("counter of identical ID reached the limit, %w", err)
 					}
 				}
 			} else if err != nil {
-				return nil, fmt.Errorf("fail to create vertex documents: %w", err)
+				return nil, nil, fmt.Errorf("fail to create vertex(part) document: %w", err)
 			}
 			edges = append(edges, edge)
-			continue
 		}
 
 		// Parsing filelines without "parent"
 		if strings.Contains(line, "PRODUCT_DEFINITION(") {
 
-			if flag == 0 {
-				time.Sleep(time.Second)
-				flag = 1
+			part, _ := ProcessVertexEdge(line, "PRODUCT_")
+			parts = append(parts, part)
+
+		}
+	}
+	return edges, parts, nil
+}
+
+func CatchHeadParts(parts []Vertex, edges []Edge, vertexCollection driver.Collection) error {
+	re := regexp.MustCompile("[0-9]+")
+	for _, onePart := range parts {
+		hasChild := false
+		for i := 0; i < len(edges); i++ {
+			if onePart.ID == re.FindString(edges[i].ID_from) {
+				hasChild = true
+				break
 			}
-
-			vertex, _ := ProcessVertexEdge(line, "V")
-
-			_, err := vertexCollection.CreateDocument(context.TODO(), vertex)
-			if driver.IsArangoErrorWithCode(err, 409) {
-				continue
-			} else if err != nil {
-				return nil, fmt.Errorf("fail to create vertex documents: %w", err)
+		}
+		if !hasChild {
+			_, err := vertexCollection.CreateDocument(context.TODO(), onePart)
+			if err != nil {
+				return fmt.Errorf("fail to create vertex document from partsFull: %w", err)
 			}
 		}
 	}
-	return edges, nil
+	return nil
 }
