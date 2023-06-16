@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -91,6 +92,14 @@ func ParseFile(chunk string, vertexCollection driver.Collection) ([]Edge, []Vert
 }
 
 func CatchHeadParts(parts []Vertex, edges []Edge, vertexCollection driver.Collection) error {
+
+	sort.Slice(edges[:], func(i, j int) bool {
+		return edges[i].ID_from > edges[j].ID_from
+	})
+	sort.Slice(parts[:], func(i, j int) bool {
+		return parts[i].ID > parts[j].ID
+	})
+
 	re := regexp.MustCompile("[0-9]+")
 	for _, onePart := range parts {
 		hasChild := false

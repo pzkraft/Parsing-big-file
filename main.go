@@ -6,8 +6,10 @@ import (
 	"STEPparse_ver_beta/parser"
 	"context"
 	"fmt"
-	"sort"
+	"runtime"
+	"strings"
 	"sync"
+	"time"
 )
 
 func main() {
@@ -33,30 +35,29 @@ func main() {
 	var edgesFull []parser.Edge
 	var partsFull []parser.Vertex
 
+	start := time.Now()
+
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
+		fmt.Println("add Goroutine number:", i+1)
 		go func() {
 			defer wg.Done()
 			for chunk := range work {
+				fmt.Println("+++start:", strings.Trim(chunk[:15], "\r\n"))
 				edges, parts, err := parser.ParseFile(chunk, vertexCollection)
 				if err != nil {
 					fmt.Printf("fail to parse or write to DB: %v \n", err)
 				}
 				edgesFull = append(edgesFull, edges...)
 				partsFull = append(partsFull, parts...)
+				fmt.Println("---end:", strings.Trim(chunk[:15], "\r\n"))
 
 			}
 		}()
 	}
+	fmt.Println("The number of active Goroutines:", runtime.NumGoroutine())
 	wg.Wait()
-
-	// sorting received slices of edges and parts
-	sort.Slice(edgesFull[:], func(i, j int) bool {
-		return edgesFull[i].ID_from > edgesFull[j].ID_from
-	})
-	sort.Slice(partsFull[:], func(i, j int) bool {
-		return partsFull[i].ID > partsFull[j].ID
-	})
+	duration := time.Since(start)
 
 	//catching head parts without 'parent'
 	err = parser.CatchHeadParts(partsFull, edgesFull, vertexCollection)
@@ -71,4 +72,6 @@ func main() {
 			fmt.Printf("fail to create edge documents: %v", err)
 		}
 	}
+	fmt.Println("The number of active Goroutines before the end:", runtime.NumGoroutine())
+	fmt.Println("Execution time of goroutine's loop:", duration)
 }

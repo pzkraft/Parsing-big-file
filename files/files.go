@@ -6,7 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	//"sync"
+	"sync"
 )
 
 // TODO: interface delete
@@ -33,13 +33,13 @@ func SplitFileToChunks(workChan chan string, fileToBeChunked *os.File, numOfChun
 
 	// calculate total number of parts the file will be chunked into
 	totalPartsNum := uint64(math.Ceil(float64(fileSize) / float64(fileChunk)))
-	fmt.Printf("Splitting to %d pieces.\n", totalPartsNum)
+	fmt.Printf("add Goroutine number: 0 --- Splitting to %d pieces.\n", totalPartsNum)
 
 	//TODO: for in goroutine
-	//var wg sync.WaitGroup
-	//wg.Add(1)
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func(workChan chan string) {
-		//defer wg.Done()
+		defer wg.Done()
 		addPartBuffer := ""
 		chunk := ""
 		for i := uint64(0); i < totalPartsNum; i++ {
@@ -55,7 +55,7 @@ func SplitFileToChunks(workChan chan string, fileToBeChunked *os.File, numOfChun
 			chunk = addPartBuffer + string(partBuffer)[:endLine+1]
 			workChan <- chunk
 
-			fmt.Println("Split to : ", chunkName)
+			fmt.Println("Split to : ", chunkName, "starts at:", strings.Trim(chunk[:15], "\r\n"))
 
 			chunk = ""
 			addPartBuffer = string(partBuffer)[endLine+1 : len(string(partBuffer))]
